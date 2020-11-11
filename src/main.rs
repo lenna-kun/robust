@@ -20,13 +20,13 @@ mod uft;
 #[allow(unused_must_use)]
 fn main() {
     let args: Vec<String> = env::args().collect();
-    if args.len() != 2 {
+    if args.len() != 3 {
         panic!("args error");
     }
 
-    let mut uft = uft::Uft::new(1500);
+    let mut uft = uft::Uft::new(args[1].parse::<usize>().unwrap());
 
-    let role: &str = &args[1];
+    let role: &str = &args[2];
     match role {
         "sender" => {
             // serial

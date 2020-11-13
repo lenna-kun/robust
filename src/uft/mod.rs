@@ -66,12 +66,19 @@ impl Uft {
         Ok(())
     }
 
+    fn update_rto(&mut self, rtt: u32) {
+        self.rto = (7 * self.rto + 3 * rtt) / 10;
+    }
+
     #[allow(unused_must_use)]
-    pub fn send(&self, filepath: &str, address: SocketAddr, id: u16) -> io::Result<()> {
+    pub fn send(&mut self, filepath: &str, address: SocketAddr, id: u16) -> io::Result<()> {
         let socket = UdpSocket::bind("0.0.0.0:0")?;
 
         let data_fragments = utils::split_file_into_mtu_size(filepath, self.mtu)?;
-        let mut timeouts: Vec<utils::Time> = vec![utils::Time::new(); data_fragments.len()];
+        let mut timeouts: Vec<utils::Time> = {
+            let now = utils::Time::now();
+            vec![now; data_fragments.len()]
+        };
         let mut flags = utils::Flags::new();
         flags.set_length(data_fragments.len())?;
         let (tx, rx) = channel();
@@ -90,12 +97,19 @@ impl Uft {
         while !flags.isallset() {
             for (offset, data_fragment) in data_fragments.iter().enumerate() {
                 if let Ok(s) = flags.isset(offset) {
-                    if s || utils::Time::now() < timeouts[offset] {
+                    if s {
                         continue;
                     }
                 } else {
                     return Err(io::Error::new(io::ErrorKind::Other, "data too long"));
                 }
+
+                let now = utils::Time::now(); 
+                if now < timeouts[offset].add_millis(self.rto) {
+                    continue;
+                }
+
+                self.update_rto(now.millis_sub(&timeouts[offset])); // calculate rto from rtt
 
                 let packet = packet::UftPacket {
                     header: packet::UftPacketHeader {
@@ -113,7 +127,7 @@ impl Uft {
                     payload: data_fragment.to_vec(),
                 };
 
-                timeouts[offset] = utils::Time::now().add_millis(self.rto);
+                timeouts[offset] = utils::Time::now();
 
                 socket.send_to(&packet.raw(), address);
 

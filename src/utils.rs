@@ -22,12 +22,12 @@ pub struct Time {
 }
 
 impl Time {
-    pub fn new() -> Self {
-        Self {
-            secs: 0,
-            millis: 0,
-        }
-    }
+    // pub fn new() -> Self {
+    //     Self {
+    //         secs: 0,
+    //         millis: 0,
+    //     }
+    // }
 
     pub fn now() -> Self {
         let dt: DateTime<Utc> = Utc::now();
@@ -37,12 +37,16 @@ impl Time {
         }
     }
 
-    pub fn add_millis(self, millis: u32) -> Self {
+    pub fn add_millis(&self, millis: u32) -> Self {
         let millis: u32 = millis + self.millis;
         Self {
             secs: self.secs + (millis as i64 / 1000),
             millis: millis % 1000,
         }
+    }
+
+    pub fn millis_sub(&self, other: &Self) -> u32 {
+        ((self.secs as u64 * 1000 + self.millis as u64) - (other.secs as u64 * 1000 + other.millis as u64)) as u32
     }
 }
 

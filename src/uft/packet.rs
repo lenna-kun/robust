@@ -59,8 +59,8 @@ pub struct UftPacket {
 }
 
 impl UftPacket {
-    pub fn from_raw(raw_packet: Vec<u8>) -> io::Result<Self> {
-        let header: UftPacketHeader = UftPacketHeader::from_raw(&raw_packet)?;
+    pub fn from_raw(raw_packet: &[u8]) -> io::Result<Self> {
+        let header: UftPacketHeader = UftPacketHeader::from_raw(raw_packet)?;
         
         if raw_packet.len() != header.total_length as usize {
             return Err(io::Error::new(io::ErrorKind::Other, "length error"));

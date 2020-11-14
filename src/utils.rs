@@ -131,7 +131,7 @@ pub fn split_file_into_mtu_size(filepath: &str, mtu: usize) -> io::Result<Vec<Ve
     let mut data_fragments: Vec<Vec<u8>> = Vec::new();
     let mut f = BufReader::new(File::open(filepath)?);
     loop {
-        let mut data_fragment: Vec<u8> = vec![0; mtu - general::IP_HEADER_LENGTH - general::UDP_HEADER_LENGTH - general::UFT_HEADER_LENGTH];
+        let mut data_fragment: Vec<u8> = vec![0; mtu]; //  - general::IP_HEADER_LENGTH - general::UDP_HEADER_LENGTH - general::UFT_HEADER_LENGTH
         let data_length: usize = f.read(&mut data_fragment)?;
         if data_length == 0 {
             return Ok(data_fragments);

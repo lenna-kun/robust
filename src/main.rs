@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate lazy_static;
+
 use std::{
     env,
     fs::File,
@@ -5,13 +8,10 @@ use std::{
         BufWriter,
         Write,
     },
-    net::{
-        IpAddr,
-        Ipv4Addr,
-        SocketAddr,
-    },
     // thread,
 };
+
+use pnet::util::MacAddr;
 
 mod general;
 mod utils;
@@ -24,9 +24,9 @@ fn main() {
         panic!("args error");
     }
 
-    let mut uft = uft::Uft::new(args[1].parse::<usize>().unwrap());
+    let mut uft = uft::Uft::new(args[1].parse::<usize>().unwrap(), &args[2], MacAddr::new(0xff, 0xff, 0xff, 0xff, 0xff, 0xff)).unwrap();
 
-    let role: &str = &args[2];
+    let role: &str = &args[3];
     match role {
         "sender" => {
             // serial
@@ -34,7 +34,7 @@ fn main() {
                 let filepath: String = format!("./data/data{}", id);
                 uft.send(
                     &filepath,
-                    SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8888),
+                    MacAddr::new(0xff, 0xff, 0xff, 0xff, 0xff, 0xff),
                     id
                 );
             }
@@ -60,7 +60,7 @@ fn main() {
         "receiver" => {
             for i in 0.. {
                 let filepath: String = format!("./received/data{}", i);
-                let data = if let Ok(d) = uft.receive(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8888)) {
+                let data = if let Ok(d) = uft.receive(MacAddr::new(0xff, 0xff, 0xff, 0xff, 0xff, 0xff)) {
                     d
                 } else {
                     continue

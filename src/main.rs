@@ -20,7 +20,7 @@ mod uft;
 #[allow(unused_must_use)]
 fn main() {
     let args: Vec<String> = env::args().collect();
-    if args.len() != 3 {
+    if args.len() != 4 {
         panic!("args error");
     }
 

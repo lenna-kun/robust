@@ -83,7 +83,7 @@ impl Uft {
                     if frame.get_ethertype() != EtherType(0xFF) || frame.get_source() != src_address || frame.get_destination() != dst_address {
                         continue;
                     }
-                    let packet = if let Ok(p) = packet::UftPacket::from_raw(&frame.payload()) {
+                    let packet = if let Ok(p) = packet::UftPacket::from_raw(frame.payload().to_vec()) {
                         p
                     } else {
                         continue
@@ -223,7 +223,7 @@ impl Uft {
                     if frame.get_ethertype() != EtherType(0xFF) || frame.get_source() != src_address || frame.get_destination() != self.address {
                         continue;
                     }
-                    let packet = if let Ok(p) = packet::UftPacket::from_raw(&frame.payload()) {
+                    let packet = if let Ok(p) = packet::UftPacket::from_raw(frame.payload().to_vec()) {
                         p
                     } else {
                         continue
@@ -234,7 +234,6 @@ impl Uft {
                         continue;
                     }
 
-                    self.received_files_flag.insert(packet.header.id);
                     let file_buffer = self.received_files_buffer
                         .entry(packet.header.id)
                         .or_insert(vec![Vec::new(); general::MAX_OFFSET_LENGTH]);
@@ -262,6 +261,7 @@ impl Uft {
                                 acc
                             }
                         );
+                        self.received_files_flag.insert(packet.header.id);
                         return Ok(raw_file);
                     }
                 },

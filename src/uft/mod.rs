@@ -213,7 +213,7 @@ impl Uft {
     }
 
     #[allow(unused_must_use)]
-    pub fn receive(&mut self, src_address: MacAddr) -> io::Result<Vec<u8>> {
+    pub fn receive_from(&mut self, src_address: MacAddr) -> io::Result<Vec<u8>> {
         let mut datalink_rx = RX.lock().unwrap();
         loop {
             match datalink_rx.as_mut().unwrap().next() {

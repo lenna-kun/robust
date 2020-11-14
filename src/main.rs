@@ -60,7 +60,7 @@ fn main() {
         "receiver" => {
             for i in 0.. {
                 let filepath: String = format!("./received/data{}", i);
-                let data = if let Ok(d) = uft.receive(MacAddr::new(0xff, 0xff, 0xff, 0xff, 0xff, 0xff)) {
+                let data = if let Ok(d) = uft.receive_from(MacAddr::new(0xff, 0xff, 0xff, 0xff, 0xff, 0xff)) {
                     d
                 } else {
                     continue

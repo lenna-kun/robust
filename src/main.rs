@@ -42,12 +42,12 @@ fn main() {
             // let mut threads: Vec<thread::JoinHandle<_>> = Vec::new();
             // for id in 0..1000 {
             //     let filepath: String = format!("./data/data{}", id);
-            //     let uft = uft.clone();
+            //     let mut uft = uft.clone();
             //     threads.push(
             //         thread::spawn(move || {
             //             uft.send(
             //                 &filepath,
-            //                 SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8888),
+            //                 MacAddr::new(0xff, 0xff, 0xff, 0xff, 0xff, 0xff),
             //                 id
             //             );
             //         })

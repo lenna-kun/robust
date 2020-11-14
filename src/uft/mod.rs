@@ -38,6 +38,7 @@ lazy_static! {
     static ref RX: Mutex<Option<Box<dyn DataLinkReceiver + 'static>>> = Mutex::new(None);
 }
 
+#[derive(Clone)]
 pub struct Uft {
     address: MacAddr,
     mtu: usize,

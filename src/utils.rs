@@ -127,11 +127,11 @@ impl Flags {
     }
 }
 
-pub fn split_file_into_mtu_size(filepath: &str, mtu: usize) -> io::Result<Vec<Vec<u8>>> {
+pub fn split_file(filepath: &str, size: usize) -> io::Result<Vec<Vec<u8>>> {
     let mut data_fragments: Vec<Vec<u8>> = Vec::new();
     let mut f = BufReader::new(File::open(filepath)?);
     loop {
-        let mut data_fragment: Vec<u8> = vec![0; mtu - general::UFT_HEADER_LENGTH]; //  - general::IP_HEADER_LENGTH - general::UDP_HEADER_LENGTH - general::UFT_HEADER_LENGTH
+        let mut data_fragment: Vec<u8> = vec![0; size - general::UFT_HEADER_LENGTH];
         let data_length: usize = f.read(&mut data_fragment)?;
         if data_length == 0 {
             return Ok(data_fragments);
@@ -139,4 +139,15 @@ pub fn split_file_into_mtu_size(filepath: &str, mtu: usize) -> io::Result<Vec<Ve
         data_fragment.resize(data_length, 0);
         data_fragments.push(data_fragment);
     }
+}
+
+pub fn rstrip_null(mut bytes: Vec<u8>) -> Vec<u8> {
+    while let Some(b) = bytes.last() {
+        if *b == 0 {
+            bytes.pop().unwrap();
+        } else {
+            break;
+        }
+    }
+    bytes
 }

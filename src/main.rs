@@ -15,7 +15,7 @@ use pnet::util::MacAddr;
 
 mod general;
 mod utils;
-mod uft;
+mod eft;
 
 #[allow(unused_must_use)]
 fn main() {
@@ -24,7 +24,7 @@ fn main() {
         panic!("args error");
     }
 
-    let mut uft = uft::Uft::new(args[1].parse::<usize>().unwrap(), &args[2], MacAddr::new(0xff, 0xff, 0xff, 0xff, 0xff, 0xff)).unwrap();
+    let mut eft = eft::Eft::new(args[1].parse::<usize>().unwrap(), &args[2], MacAddr::new(0xff, 0xff, 0xff, 0xff, 0xff, 0xff)).unwrap();
 
     let role: &str = &args[3];
     match role {
@@ -32,7 +32,7 @@ fn main() {
             // serial
             for id in 0..1000 {
                 let filepath: String = format!("./data/data{}", id);
-                uft.send(
+                eft.send(
                     &filepath,
                     MacAddr::new(0xff, 0xff, 0xff, 0xff, 0xff, 0xff),
                     id
@@ -42,10 +42,10 @@ fn main() {
             // let mut threads: Vec<thread::JoinHandle<_>> = Vec::new();
             // for id in 0..1000 {
             //     let filepath: String = format!("./data/data{}", id);
-            //     let mut uft = uft.clone();
+            //     let mut eft = eft.clone();
             //     threads.push(
             //         thread::spawn(move || {
-            //             uft.send(
+            //             eft.send(
             //                 &filepath,
             //                 MacAddr::new(0xff, 0xff, 0xff, 0xff, 0xff, 0xff),
             //                 id
@@ -60,7 +60,7 @@ fn main() {
         "receiver" => {
             for i in 0.. {
                 let filepath: String = format!("./received/data{}", i);
-                let data = if let Ok(d) = uft.receive_from(MacAddr::new(0xff, 0xff, 0xff, 0xff, 0xff, 0xff)) {
+                let data = if let Ok(d) = eft.receive_from(MacAddr::new(0xff, 0xff, 0xff, 0xff, 0xff, 0xff)) {
                     d
                 } else {
                     continue

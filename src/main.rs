@@ -24,7 +24,7 @@ fn main() {
         panic!("args error");
     }
 
-    let mut eft = eft::Eft::new(args[1].parse::<usize>().unwrap(), &args[2], MacAddr::new(0xff, 0xff, 0xff, 0xff, 0xff, 0xff)).unwrap();
+    let mut eft = eft::Eft::new(args[1].parse::<usize>().unwrap(), &args[2]).unwrap();
 
     let role: &str = &args[3];
     match role {

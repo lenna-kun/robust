@@ -55,7 +55,7 @@ pub struct Eft {
 }
 
 impl Eft {
-    pub fn new(mtu: usize, interface_name: &str, address: MacAddr) -> io::Result<Self> {
+    pub fn new(mtu: usize, interface_name: &str) -> io::Result<Self> {
         let interface = datalink::interfaces()
             .into_iter()
             .find(|iface| iface.name == *interface_name)
@@ -69,7 +69,7 @@ impl Eft {
         }
 
         Ok(Self {
-            address: address,
+            address: interface.mac.ok_or_else(|| io::Error::new(io::ErrorKind::Other, "failed to get mac addr"))?,
             mtu: mtu,
             rto: 30, // ms
             flags_for_files: HashSet::new(),

@@ -59,14 +59,7 @@ pub struct UftPacket {
 }
 
 impl UftPacket {
-    pub fn from_raw(mut raw_packet: Vec<u8>) -> io::Result<Self> {
-        while let Some(b) = raw_packet.last() {
-            if *b == 0 {
-                raw_packet.pop().unwrap();
-            } else {
-                break;
-            }
-        }
+    pub fn from_raw(raw_packet: Vec<u8>) -> io::Result<Self> {
         let header: UftPacketHeader = UftPacketHeader::from_raw(&raw_packet)?;
         
         if raw_packet.len() != header.total_length as usize {

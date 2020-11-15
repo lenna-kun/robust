@@ -38,6 +38,11 @@ lazy_static! {
     static ref RX: Mutex<Option<Box<dyn DataLinkReceiver + 'static>>> = Mutex::new(None);
 }
 
+struct WrapTime {
+    offset: u16,
+    time: utils::Time,
+}
+
 #[derive(Clone)]
 pub struct Uft {
     address: MacAddr,
@@ -65,14 +70,15 @@ impl Uft {
         Ok(Self {
             address: address,
             mtu: mtu,
-            rto: 40, // ms
+            rto: 10, // ms
             received_files_flag: HashSet::new(),
             received_files_buffer: HashMap::new(),
             received_files_buffer_flag: HashMap::new(),
         })
     }
 
-    fn receive_ack_task(src_address: MacAddr, dst_address: MacAddr, mpsc_tx: mpsc::Sender<usize>, id: u16, flags_length: usize) -> io::Result<()> {
+    #[allow(unused_must_use)]
+    fn receive_ack_task(src_address: MacAddr, dst_address: MacAddr, mpsc_tx1: mpsc::Sender<usize>, mpsc_tx2: mpsc::Sender<WrapTime>, id: u16, flags_length: usize) -> io::Result<()> {
         let mut flags = utils::Flags::new();
         flags.set_length(flags_length)?;
         let mut datalink_rx = RX.lock().unwrap();
@@ -83,16 +89,19 @@ impl Uft {
                     if frame.get_ethertype() != EtherType(0xFF) || frame.get_source() != src_address || frame.get_destination() != dst_address {
                         continue;
                     }
-                    let packet = if let Ok(p) = packet::UftPacket::from_raw(frame.payload().to_vec()) {
+                    let packet = if let Ok(p) = packet::UftPacket::from_raw({
+                        let mut raw = frame.payload().to_vec();
+                        raw.resize(8, 0);
+                        raw
+                    }) {
                         p
                     } else {
                         continue
                     };
                     if packet.header.id == id && packet.header.uft_type == packet::UftType::Ack as u8 {
                         if let Ok(_) = flags.set(packet.header.offset as usize) {
-                            if let Err(_) = mpsc_tx.send(packet.header.offset as usize) {
-                                break;
-                            }
+                            mpsc_tx1.send(packet.header.offset as usize);
+                            mpsc_tx2.send(WrapTime { offset: packet.header.offset, time: utils::Time::now() });
                         }
                     }
                 },
@@ -102,23 +111,20 @@ impl Uft {
         Ok(())
     }
 
-    // fn update_rto(&mut self, rtt: u32) {
-    //     self.rto = (7 * self.rto + 3 * rtt) / 10;
-    // }
-
     #[allow(unused_must_use)]
     pub fn send(&mut self, filepath: &str, dst_address: MacAddr, id: u16) -> io::Result<()> {
         let data_fragments = utils::split_file_into_mtu_size(filepath, self.mtu)?;
         let mut timeouts: Vec<utils::Time> = vec![utils::Time::new(); data_fragments.len()];
         let mut flags = utils::Flags::new();
         flags.set_length(data_fragments.len())?;
-        let (mpsc_tx, mpsc_rx) = mpsc::channel();
+        let (mpsc_tx1, mpsc_rx1) = mpsc::channel();
+        let (mpsc_tx2, mpsc_rx2) = mpsc::channel();
         let mut datalink_tx = TX.lock().unwrap();
         {
             let flags_length = flags.get_length().unwrap();
             let src_address = self.address;
             thread::spawn(move || {
-                Uft::receive_ack_task(dst_address.clone(), src_address, mpsc_tx, id, flags_length).unwrap();
+                Uft::receive_ack_task(dst_address.clone(), src_address, mpsc_tx1, mpsc_tx2, id, flags_length).unwrap();
             });
         }
         while !flags.isallset() {
@@ -153,31 +159,39 @@ impl Uft {
 
                 timeouts[offset] = utils::Time::now();
 
-                // let ether_packet = vec![0u8; ];
-                // ether_packet.extend_from_slice(&packet.raw());
                 let packet = packet.raw();
 
                 datalink_tx.as_mut().unwrap().build_and_send(1, 14+packet.len(),
                     &mut |new_packet| {
                         let mut new_packet = MutableEthernetPacket::new(new_packet).unwrap();
 
-                        // new_packet.clone_from(&ether_packet);
-
                         new_packet.set_source(self.address);
                         new_packet.set_destination(dst_address);
-
                         new_packet.set_ethertype(EtherType(0xFF));
                         new_packet.set_payload(&packet);
                     }
                 );
 
                 loop {
-                    let offset: usize = if let Ok(o) = mpsc_rx.try_recv() {
+                    let offset: usize = if let Ok(o) = mpsc_rx1.try_recv() {
                         o
                     } else {
                         break
                     };
                     flags.set(offset as usize);
+                }
+                {
+                    let mut wrap: Option<WrapTime> = None;
+                    loop {
+                        wrap = if let Ok(w) = mpsc_rx2.try_recv() {
+                            Some(w)
+                        } else {
+                            break
+                        };
+                    }
+                    if let Some(w) = wrap {
+                        self.rto = 2 * w.time.millis_sub(&timeouts[w.offset as usize]);
+                    }
                 }
             }
         }
@@ -201,11 +215,8 @@ impl Uft {
             &mut |new_packet| {
                 let mut new_packet = MutableEthernetPacket::new(new_packet).unwrap();
 
-                // new_packet.clone_from(&ether_packet);
-
                 new_packet.set_source(src_address);
                 new_packet.set_destination(dst_address);
-
                 new_packet.set_ethertype(EtherType(0xFF));
                 new_packet.set_payload(&packet);
             }
@@ -223,7 +234,17 @@ impl Uft {
                     if frame.get_ethertype() != EtherType(0xFF) || frame.get_source() != src_address || frame.get_destination() != self.address {
                         continue;
                     }
-                    let packet = if let Ok(p) = packet::UftPacket::from_raw(frame.payload().to_vec()) {
+                    let packet = if let Ok(p) = packet::UftPacket::from_raw({
+                        let mut raw = frame.payload().to_vec();
+                        while let Some(b) = raw.last() {
+                            if *b == 0 {
+                                raw.pop().unwrap();
+                            } else {
+                                break;
+                            }
+                        }
+                        raw
+                    }) {
                         p
                     } else {
                         continue

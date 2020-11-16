@@ -176,7 +176,7 @@ impl Eft {
                         };
                     }
                     if let Some(m) = mes {
-                        self.rto = m.time.millis_sub(&timeouts[m.offset as usize]);
+                        self.rto = std::cmp::min(30, m.time.millis_sub(&timeouts[m.offset as usize]));
                     }
                 }
             }

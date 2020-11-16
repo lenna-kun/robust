@@ -115,7 +115,7 @@ impl Eft {
     #[allow(unused_must_use)]
     pub fn send(&mut self, filepath: &str, dst_address: MacAddr, id: u16) -> io::Result<()> {
         let data_fragments = utils::split_file(filepath, self.mtu)?;
-        let mut timeouts: Vec<utils::Time> = vec![utils::Time::new(); data_fragments.len()];
+        let mut timeouts: Vec<utils::Time> = vec![utils::Time::now(); data_fragments.len()];
         let mut flags = utils::Flags::new();
         flags.set_length(data_fragments.len())?;
         let (mpsc_tx, mpsc_rx) = mpsc::channel();
@@ -166,17 +166,17 @@ impl Eft {
                 );
 
                 {
-                    let mut wrap: Option<Message> = None;
+                    let mut mes: Option<Message> = None;
                     loop {
-                        wrap = if let Ok(w) = mpsc_rx.try_recv() {
-                            flags.set(offset as usize);
-                            Some(w)
+                        mes = if let Ok(m) = mpsc_rx.try_recv() {
+                            flags.set(m.offset as usize);
+                            Some(m)
                         } else {
                             break
                         };
                     }
-                    if let Some(w) = wrap {
-                        self.rto = w.time.millis_sub(&timeouts[w.offset as usize]);
+                    if let Some(m) = mes {
+                        self.rto = m.time.millis_sub(&timeouts[m.offset as usize]);
                     }
                 }
             }

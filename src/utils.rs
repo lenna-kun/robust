@@ -22,6 +22,7 @@ pub struct Time {
 }
 
 impl Time {
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self {
             secs: 0,

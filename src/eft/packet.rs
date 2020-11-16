@@ -68,7 +68,7 @@ impl EftPacket {
 
         Ok(Self {
             header: header,
-            payload: raw_packet[general::UFT_HEADER_LENGTH..].to_vec(),
+            payload: raw_packet[general::EFT_HEADER_LENGTH..].to_vec(),
         })
     }
 

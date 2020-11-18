@@ -5,7 +5,7 @@ use std::{
         BufWriter,
         Write,
     },
-    // thread,
+    thread,
 };
 
 use pnet::util::MacAddr;
@@ -33,23 +33,30 @@ fn main() {
             }
         },
         "receiver" => {
-            let mut interface = eft::Interface::bind_recvmode(&args[2]).unwrap();
-            for id in 0.. {
-                let filepath: String = format!("./received/data{}", id);
-                let mut stream = interface.stream(id, MacAddr::new(0xff, 0xff, 0xff, 0xff, 0xff, 0xff)).unwrap();
-                let data = if let Ok(d) = stream.read() {
-                    d
-                } else {
-                    continue
-                };
-                let mut f = BufWriter::new(
-                    if let Ok(f) = File::create(&filepath) {
-                        f
+            let interface = eft::Interface::bind_recvmode(&args[2]).unwrap();
+            let mut threads: Vec<thread::JoinHandle<_>> = Vec::new();
+            for id in 0..1000 {
+                let mut interface = interface.clone();
+                threads.push(thread::spawn(move || {
+                    let filepath: String = format!("./received/data{}", id);
+                    let mut stream = interface.stream(id, MacAddr::new(0xff, 0xff, 0xff, 0xff, 0xff, 0xff)).unwrap();
+                    let data = if let Ok(d) = stream.read() {
+                        d
                     } else {
-                        continue
-                    }
-                );
-                f.write(&data);
+                        return
+                    };
+                    let mut f = BufWriter::new(
+                        if let Ok(f) = File::create(&filepath) {
+                            f
+                        } else {
+                            return
+                        }
+                    );
+                    f.write(&data);
+                }));
+            }
+            for thread in threads {
+                thread.join();
             }
         },
         _ => panic!("args error"),

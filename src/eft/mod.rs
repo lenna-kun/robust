@@ -43,6 +43,7 @@ struct InternalInterfaceRecvModeHandle {
 
 type InterfaceRecvModeHandle = Arc<InternalInterfaceRecvModeHandle>;
 
+#[derive(Clone)]
 pub struct InterfaceRecvMode {
     ih: InterfaceRecvModeHandle,
     dst: MacAddr,
@@ -80,6 +81,7 @@ struct InternalInterfaceSendModeHandle {
 
 type InterfaceSendModeHandle = Arc<InternalInterfaceSendModeHandle>;
 
+#[derive(Clone)]
 pub struct InterfaceSendMode {
     ih: InterfaceSendModeHandle,
     src: MacAddr,

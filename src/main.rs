@@ -1,6 +1,3 @@
-#[macro_use]
-extern crate lazy_static;
-
 use std::{
     env,
     fs::File,
@@ -24,43 +21,23 @@ fn main() {
         panic!("args error");
     }
 
-    let mut eft = eft::Eft::new(args[1].parse::<usize>().unwrap(), &args[2]).unwrap();
-
     let role: &str = &args[3];
     match role {
         "sender" => {
+            let mut interface = eft::Interface::bind_sendmode(&args[2]).unwrap();
             // serial
             for id in 0..1000 {
                 let filepath: String = format!("./data/data{}", id);
-                eft.send(
-                    &filepath,
-                    MacAddr::new(0xff, 0xff, 0xff, 0xff, 0xff, 0xff),
-                    id
-                );
+                let mut stream = interface.stream(id, MacAddr::new(0xff, 0xff, 0xff, 0xff, 0xff, 0xff)).unwrap();
+                stream.send(&filepath, args[1].parse::<usize>().unwrap());
             }
-            // parallel
-            // let mut threads: Vec<thread::JoinHandle<_>> = Vec::new();
-            // for id in 0..1000 {
-            //     let filepath: String = format!("./data/data{}", id);
-            //     let mut eft = eft.clone();
-            //     threads.push(
-            //         thread::spawn(move || {
-            //             eft.send(
-            //                 &filepath,
-            //                 MacAddr::new(0xff, 0xff, 0xff, 0xff, 0xff, 0xff),
-            //                 id
-            //             );
-            //         })
-            //     );
-            // }
-            // for thread in threads {
-            //     thread.join();
-            // }
         },
         "receiver" => {
-            for i in 0.. {
-                let filepath: String = format!("./received/data{}", i);
-                let data = if let Ok(d) = eft.receive_from(MacAddr::new(0xff, 0xff, 0xff, 0xff, 0xff, 0xff)) {
+            let mut interface = eft::Interface::bind_recvmode(&args[2]).unwrap();
+            for id in 0.. {
+                let filepath: String = format!("./received/data{}", id);
+                let mut stream = interface.stream(id, MacAddr::new(0xff, 0xff, 0xff, 0xff, 0xff, 0xff)).unwrap();
+                let data = if let Ok(d) = stream.read() {
                     d
                 } else {
                     continue

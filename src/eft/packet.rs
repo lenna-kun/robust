@@ -4,6 +4,7 @@ use std::{
 };
 
 use crate::general;
+use crate::utils;
 
 // 0                   1                   2                   3   
 // 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 
@@ -21,7 +22,7 @@ pub enum EftType {
     Ack = 2,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Default)]
 #[repr(C)]
 pub struct EftPacketHeader {
     pub packet_type: u8,
@@ -53,14 +54,21 @@ impl EftPacketHeader {
     }
 }
 
+#[derive(Clone, Default)]
 pub struct EftPacket {
     pub header: EftPacketHeader,
     pub payload: Vec<u8>,
 }
 
 impl EftPacket {
-    pub fn from_raw(raw_packet: Vec<u8>) -> io::Result<Self> {
+    pub fn from_raw(mut raw_packet: Vec<u8>) -> io::Result<Self> {
         let header: EftPacketHeader = EftPacketHeader::from_raw(&raw_packet)?;
+
+        if header.packet_type == EftType::Ack as u8 {
+            raw_packet.resize(8, 0);
+        } else {
+            utils::rstrip_null(&mut raw_packet);
+        }
         
         if raw_packet.len() != header.total_length as usize {
             return Err(io::Error::new(io::ErrorKind::Other, "length error"));

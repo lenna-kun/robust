@@ -1,10 +1,4 @@
-use chrono::{
-    DateTime,
-    Utc
-};
-
 use std::{
-    cmp::Ordering,
     fs::File,
     io::{
         self,
@@ -14,66 +8,6 @@ use std::{
 };
 
 use crate::general;
-
-#[derive(Eq, Copy, Clone)]
-pub struct Time {
-    secs: i64,
-    millis: u32,
-}
-
-impl Time {
-    #[allow(dead_code)]
-    pub fn new() -> Self {
-        Self {
-            secs: 0,
-            millis: 0,
-        }
-    }
-
-    pub fn now() -> Self {
-        let dt: DateTime<Utc> = Utc::now();
-        Self {
-            secs: dt.timestamp(),
-            millis: dt.timestamp_subsec_millis(),
-        }
-    }
-
-    pub fn add_millis(&self, millis: u32) -> Self {
-        let millis: u32 = millis + self.millis;
-        Self {
-            secs: self.secs + (millis as i64 / 1000),
-            millis: millis % 1000,
-        }
-    }
-
-    pub fn millis_sub(&self, other: &Self) -> u32 {
-        ((self.secs as u64 * 1000 + self.millis as u64) - (other.secs as u64 * 1000 + other.millis as u64)) as u32
-    }
-}
-
-impl Ord for Time {
-    fn cmp(&self, other: &Self) -> Ordering {
-        if self.secs == other.secs && self.millis == other.millis {
-            Ordering::Equal
-        } else if self.secs < other.secs || (self.secs == other.secs && self.millis < other.millis) {
-            Ordering::Less
-        } else {
-            Ordering::Greater
-        }
-    }
-}
-
-impl PartialOrd for Time {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl PartialEq for Time {
-    fn eq(&self, other: &Self) -> bool {
-        self.secs == other.secs && self.millis == other.millis
-    }
-}
 
 #[derive(Debug, Copy, Clone)]
 pub struct Flags {
@@ -119,6 +53,7 @@ impl Flags {
         Ok(((self.flags[access / 32] >> (access % 32)) & 0b1) == 0b1)
     }
 
+    #[allow(dead_code)]
     pub fn isallset(&self) -> bool {
         if let Some(length) = self.length {
             (0..length).fold(true, |acc, access| acc && self.isset(access).unwrap())
@@ -142,7 +77,7 @@ pub fn split_file(filepath: &str, size: usize) -> io::Result<Vec<Vec<u8>>> {
     }
 }
 
-pub fn rstrip_null(mut bytes: Vec<u8>) -> Vec<u8> {
+pub fn rstrip_null(bytes: &mut Vec<u8>) {
     while let Some(b) = bytes.last() {
         if *b == 0 {
             bytes.pop().unwrap();
@@ -150,5 +85,4 @@ pub fn rstrip_null(mut bytes: Vec<u8>) -> Vec<u8> {
             break;
         }
     }
-    bytes
 }

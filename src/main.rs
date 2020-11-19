@@ -38,6 +38,7 @@ fn main() {
                 filepaths.push(format!("./data/data{}", id));
             }
             interface.send_files(fileids, MacAddr::new(0xff, 0xff, 0xff, 0xff, 0xff, 0xff), filepaths, args[1].parse::<usize>().unwrap()).unwrap();
+            loop {}
         },
         "receiver" => {
             let interface = eft::Interface::bind_recvmode(&args[2]).unwrap();

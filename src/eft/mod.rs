@@ -325,11 +325,11 @@ struct EndPoint {
 
 #[allow(unused_must_use)]
 fn packet_send_loop(mut tx: Box<dyn DataLinkSender + 'static>, ih: InterfaceSendModeHandle, mpsc_rx: mpsc::Receiver<Message>) {
-    let mut cmg = ih.send_manager.lock().unwrap();
-    let cm = &mut *cmg;
     let mut fast_retransmissions: HashMap<EndPoint, BTreeMap<u16, BTreeMap<u16, bool>>> = HashMap::new();
     let mut timeout_retransmissions: HashMap<EndPoint, BTreeMap<u16, BTreeMap<u16, bool>>> = HashMap::new();
     loop {
+        let mut cmg = ih.send_manager.lock().unwrap();
+        let cm = &mut *cmg;
         loop { // get fast_retransmissions
             if let Ok(m) = mpsc_rx.try_recv() {
                 let c = if let Some(c) = cm.connections.get_mut(&m.tri) {
@@ -355,7 +355,7 @@ fn packet_send_loop(mut tx: Box<dyn DataLinkSender + 'static>, ih: InterfaceSend
                     }
                 }
             } else {
-                break
+                break;
             }
         }
         for connection in cm.connections.values_mut() { // get timeout packets
@@ -371,44 +371,30 @@ fn packet_send_loop(mut tx: Box<dyn DataLinkSender + 'static>, ih: InterfaceSend
         }
         // それぞれのインターフェースにおける先頭パケットを送信
         for fast_retransmission in fast_retransmissions.iter_mut() {
-            'outer1: loop {
-                for (fileid, next) in fast_retransmission.1.iter_mut() {
-                    if let Some((offset, b)) = next.iter_mut().next() {
-                        if *b {
-                            let tri = Tri { src: fast_retransmission.0.src, dst: fast_retransmission.0.dst, fileid: *fileid, };
-                            if let Some(c) = cm.connections.get_mut(&tri) {
-                                c.write(&mut tx, *offset);
-                                *b = false;
-                                break 'outer1;
-                            } else {
-                                continue; // ?
-                            };
-                        } else {
-                            continue;
+            'outer1: for (fileid, next) in fast_retransmission.1.iter_mut() {
+                for (offset, b) in next.iter_mut() {
+                    if *b {
+                        let tri = Tri { src: fast_retransmission.0.src, dst: fast_retransmission.0.dst, fileid: *fileid, };
+                        if let Some(c) = cm.connections.get_mut(&tri) {
+                            c.write(&mut tx, *offset);
+                            *b = false;
+                            break 'outer1;
                         }
                     }
-                    break 'outer1;
                 }
             }
         }
         for timeout_retransmission in timeout_retransmissions.iter_mut() {
-            'outer2: loop {
-                for (fileid, next) in timeout_retransmission.1.iter_mut() {
-                    if let Some((offset, b)) = next.iter_mut().next() {
-                        if *b {
-                            let tri = Tri { src: timeout_retransmission.0.src, dst: timeout_retransmission.0.dst, fileid: *fileid, };
-                            if let Some(c) = cm.connections.get_mut(&tri) {
-                                c.write(&mut tx, *offset);
-                                *b = false;
-                                break 'outer2;
-                            } else {
-                                continue; // ?
-                            };
-                        } else {
-                            continue;
+            'outer2: for (fileid, next) in timeout_retransmission.1.iter_mut() {
+                for (offset, b) in next.iter_mut() {
+                    if *b {
+                        let tri = Tri { src: timeout_retransmission.0.src, dst: timeout_retransmission.0.dst, fileid: *fileid, };
+                        if let Some(c) = cm.connections.get_mut(&tri) {
+                            c.write(&mut tx, *offset);
+                            *b = false;
+                            break 'outer2;
                         }
                     }
-                    break 'outer2;
                 }
             }
         }
@@ -457,7 +443,7 @@ impl SendConnection {
     fn timeouts(&self) -> Vec<u16> {
         let mut timeouts: Vec<u16> = Vec::new();
         for (offset, timer) in self.timers.send_timers.iter().enumerate() {
-            if timer.elapsed().as_millis() > self.timers.rto as u128 {
+            if timer.elapsed().as_millis() > self.timers.rto as u128 && !self.flag4buffer.isset(offset).unwrap() { // TODO
                 timeouts.push(offset as u16);
             }
         }

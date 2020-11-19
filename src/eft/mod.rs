@@ -1,10 +1,10 @@
 use std::{
     collections::{
-        BTreeMap, BTreeSet, hash_map::Entry, HashMap,
+        BTreeMap, hash_map::Entry, HashMap,
     },
     io::self,
     sync::{
-        Arc, Condvar, Mutex,
+        Arc, Condvar, Mutex, mpsc,
     },
     thread,
     time,
@@ -89,29 +89,99 @@ pub struct InterfaceSendMode {
 }
 
 impl InterfaceSendMode {
-    pub fn stream(&mut self, fileid: u16, dst: MacAddr) -> io::Result<SendStream> {
+    #[allow(dead_code)]
+    pub fn send(&mut self, fileid: u16, dst: MacAddr, filepath: String, mtu: usize) -> io::Result<()> {
         let mut cm = self.ih.send_manager.lock().unwrap();
         let tri = Tri {
             src: self.src,
             dst: dst,
             fileid: fileid,
         };
+        
+        let data_fragments = utils::split_file(&filepath, mtu)?;
+        let mut buffer: Vec<packet::EftPacket> = Vec::new();
+        let mut send_timers: Vec<time::Instant> = Vec::new();
+        let timer_init = time::Instant::now() - time::Duration::new(5, 0);
+        for (offset, data_fragment) in data_fragments.iter().enumerate() {
+            let packet = packet::EftPacket {
+                header: packet::EftPacketHeader {
+                    packet_type:
+                        if data_fragments.len() - 1 == offset {
+                            packet::EftType::DataEnd as u8
+                        } else {
+                            packet::EftType::Data as u8
+                        },
+                    length: 8,
+                    total_length: data_fragment.len() as u16 + 8,
+                    id: tri.fileid,
+                    offset: offset as u16,
+                },
+                payload: data_fragment.to_vec(),
+            };
+            buffer.push(packet);
+            send_timers.push(timer_init);
+        }
+
         cm.connections.insert(
             tri, 
             SendConnection {
                 tri: tri,
                 // ih: self.ih.clone(),
-                buffer: Vec::new(),
+                buffer: buffer,
                 flag4buffer: utils::Flags::new(),
-                timers: Timers { send_timers: BTreeMap::new(), rto: 0, },
-                retransmissions: BTreeSet::new(),
+                timers: Timers { send_timers: send_timers, rto: 20, },
                 cnt: 0,
             }
         );
-        Ok(SendStream{
-            tri: tri,
-            ih: self.ih.clone(),
-        })
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    pub fn send_files(&mut self, fileids: Vec<u16>, dst: MacAddr, filepaths: Vec<String>, mtu: usize) -> io::Result<()> {
+        let mut cm = self.ih.send_manager.lock().unwrap();
+        for i in 0..fileids.len() {
+            let tri = Tri {
+                src: self.src,
+                dst: dst,
+                fileid: fileids[i],
+            };
+            let data_fragments = utils::split_file(&filepaths[i], mtu)?;
+            let mut buffer: Vec<packet::EftPacket> = Vec::new();
+            let mut send_timers: Vec<time::Instant> = Vec::new();
+            let timer_init = time::Instant::now() - time::Duration::new(5, 0);
+            for (offset, data_fragment) in data_fragments.iter().enumerate() {
+                let packet = packet::EftPacket {
+                    header: packet::EftPacketHeader {
+                        packet_type:
+                            if data_fragments.len() - 1 == offset {
+                                packet::EftType::DataEnd as u8
+                            } else {
+                                packet::EftType::Data as u8
+                            },
+                        length: 8,
+                        total_length: data_fragment.len() as u16 + 8,
+                        id: tri.fileid,
+                        offset: offset as u16,
+                    },
+                    payload: data_fragment.to_vec(),
+                };
+                buffer.push(packet);
+                send_timers.push(timer_init);
+            }
+
+            cm.connections.insert(
+                tri, 
+                SendConnection {
+                    tri: tri,
+                    // ih: self.ih.clone(),
+                    buffer: buffer,
+                    flag4buffer: utils::Flags::new(),
+                    timers: Timers { send_timers: send_timers, rto: 20, },
+                    cnt: 0,
+                }
+            );
+        }
+        Ok(())
     }
 }
 
@@ -133,14 +203,13 @@ impl Interface {
         };
 
         let ih: InterfaceSendModeHandle = Arc::default();
-
+        let (mpsc_tx, mpsc_rx) = mpsc::channel();
         {
-            let ih = ih.clone();
-            thread::spawn(move || packet_rack_loop(rx, ih.clone()));
+            thread::spawn(move || packet_rack_loop(rx, mpsc_tx));
         }
         {
             let ih = ih.clone();
-            thread::spawn(move || packet_send_loop(tx, ih.clone()));
+            thread::spawn(move || packet_send_loop(tx, ih.clone(), mpsc_rx));
         }
 
         Ok(InterfaceSendMode {
@@ -214,7 +283,13 @@ fn send_ack(tx: &mut Box<dyn DataLinkSender + 'static>, src_address: MacAddr, ds
     Ok(())
 }
 
-fn packet_rack_loop(mut rx: Box<dyn DataLinkReceiver + 'static>, ih: InterfaceSendModeHandle) -> io::Result<()> {
+struct Message {
+    tri: Tri,
+    offset: u16,
+}
+
+#[allow(unused_must_use)]
+fn packet_rack_loop(mut rx: Box<dyn DataLinkReceiver + 'static>, mpsc_tx: mpsc::Sender<Message>) -> io::Result<()> {
     loop {
         match rx.next() {
             Ok(frame) => {
@@ -229,46 +304,119 @@ fn packet_rack_loop(mut rx: Box<dyn DataLinkReceiver + 'static>, ih: InterfaceSe
                     continue
                 };
 
-                let mut cmg = ih.send_manager.lock().unwrap();
-                let cm = &mut *cmg;
                 let t = Tri {
                     src: frame.get_destination(),
                     dst: frame.get_source(),
                     fileid: packet.header.id,
                 };
 
-                match cm.connections.entry(t) {
-                    Entry::Occupied(mut s) => {
-                        if packet.header.packet_type != packet::EftType::Ack as u8 {
-                            continue;
-                        }
-                        // received ack
-                        if let Ok(b) = s.get_mut().on_packet(packet.header.offset) {
-                            if b {
-                                cm.connections.remove(&t); // ConnectionManagerから削除
-                            }
-                        }
-                    },
-                    _ => continue,
-                }
+                mpsc_tx.send(Message { tri: t, offset: packet.header.offset, });
             },
             Err(_) => continue,
         }
     }
 }
 
-fn packet_send_loop(mut tx: Box<dyn DataLinkSender + 'static>, ih: InterfaceSendModeHandle) {
+#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
+struct EndPoint {
+    src: MacAddr,
+    dst: MacAddr,
+}
+
+#[allow(unused_must_use)]
+fn packet_send_loop(mut tx: Box<dyn DataLinkSender + 'static>, ih: InterfaceSendModeHandle, mpsc_rx: mpsc::Receiver<Message>) {
+    let mut cmg = ih.send_manager.lock().unwrap();
+    let cm = &mut *cmg;
+    let mut fast_retransmissions: HashMap<EndPoint, BTreeMap<u16, BTreeMap<u16, bool>>> = HashMap::new();
+    let mut timeout_retransmissions: HashMap<EndPoint, BTreeMap<u16, BTreeMap<u16, bool>>> = HashMap::new();
     loop {
-        let mut cmg = ih.send_manager.lock().unwrap();
-        for connection in cmg.connections.values_mut() {
-            connection.on_tick(&mut tx);
-            connection.on_fast_retransmission(&mut tx);
+        loop { // get fast_retransmissions
+            if let Ok(m) = mpsc_rx.try_recv() {
+                let c = if let Some(c) = cm.connections.get_mut(&m.tri) {
+                    c
+                } else {
+                    continue
+                };
+                if let Ok((fin, fr)) = c.on_packet(m.offset) {
+                    if fin { // file sent
+                        cm.connections.remove(&m.tri); // ConnectionManagerから削除
+                        continue;
+                    }
+                    if let Some(offsets) = fr {
+                        for offset in offsets {
+                            let e = fast_retransmissions
+                                .entry(EndPoint { src: m.tri.src, dst: m.tri.dst, })
+                                .or_insert(BTreeMap::new());
+                            let e = e
+                                .entry(m.tri.fileid)
+                                .or_insert(BTreeMap::new());
+                            e.insert(offset, true);
+                        }
+                    }
+                }
+            } else {
+                break
+            }
+        }
+        for connection in cm.connections.values_mut() { // get timeout packets
+            for offset in connection.timeouts() {
+                let e = timeout_retransmissions
+                    .entry(EndPoint { src: connection.tri.src, dst: connection.tri.dst, })
+                    .or_insert(BTreeMap::new());
+                let e = e
+                    .entry(connection.tri.fileid)
+                    .or_insert(BTreeMap::new());
+                e.insert(offset, true);
+            }
+        }
+        // それぞれのインターフェースにおける先頭パケットを送信
+        for fast_retransmission in fast_retransmissions.iter_mut() {
+            'outer1: loop {
+                for (fileid, next) in fast_retransmission.1.iter_mut() {
+                    if let Some((offset, b)) = next.iter_mut().next() {
+                        if *b {
+                            let tri = Tri { src: fast_retransmission.0.src, dst: fast_retransmission.0.dst, fileid: *fileid, };
+                            if let Some(c) = cm.connections.get_mut(&tri) {
+                                c.write(&mut tx, *offset);
+                                *b = false;
+                                break 'outer1;
+                            } else {
+                                continue; // ?
+                            };
+                        } else {
+                            continue;
+                        }
+                    }
+                    break 'outer1;
+                }
+            }
+        }
+        for timeout_retransmission in timeout_retransmissions.iter_mut() {
+            'outer2: loop {
+                for (fileid, next) in timeout_retransmission.1.iter_mut() {
+                    if let Some((offset, b)) = next.iter_mut().next() {
+                        if *b {
+                            let tri = Tri { src: timeout_retransmission.0.src, dst: timeout_retransmission.0.dst, fileid: *fileid, };
+                            if let Some(c) = cm.connections.get_mut(&tri) {
+                                c.write(&mut tx, *offset);
+                                *b = false;
+                                break 'outer2;
+                            } else {
+                                continue; // ?
+                            };
+                        } else {
+                            continue;
+                        }
+                    }
+                    break 'outer2;
+                }
+            }
         }
     }
 }
 
 struct Timers {
-    send_timers: BTreeMap<u16, time::Instant>,
+    send_timers: Vec<time::Instant>,
     rto: u32,
 }
 
@@ -278,48 +426,42 @@ struct SendConnection {
     buffer: Vec<packet::EftPacket>,
     flag4buffer: utils::Flags,
     timers: Timers,
-    retransmissions: BTreeSet<u16>,
     cnt: usize,
 }
 
 impl SendConnection {
-    fn on_packet<'a>(&mut self, offset: u16) -> io::Result<bool> { // ファイルの送信が完了したか
+    fn on_packet<'a>(&mut self, offset: u16) -> io::Result<(bool, Option<Vec<u16>>)> { // ファイルの送信が完了したか
         if self.flag4buffer.isset(offset as usize)? {
-            return Ok(false);
+            return Ok((false, None));
         }
         self.flag4buffer.set(offset as usize)?;
 
         self.cnt += 1;
 
+        let mut fast_retransmissions: Vec<u16> = Vec::new();
         // 高速再転送
         for access in 0..offset {
             if !self.flag4buffer.isset(access as usize)? {
-                self.retransmissions.insert(access);
+                fast_retransmissions.push(access);
             }
         }
 
         if self.flag4buffer.get_length()? == self.cnt {
-            return Ok(true);
+            return Ok((true, None));
         }
 
-        Ok(false)
+        Ok((false, Some(fast_retransmissions)))
     }
 
-    #[allow(unused_must_use)]
-    fn on_tick(&mut self, tx: &mut Box<dyn DataLinkSender + 'static>) {
-        for (offset, timer) in self.timers.send_timers.clone().into_iter() {
+    // #[allow(unused_must_use)]
+    fn timeouts(&self) -> Vec<u16> {
+        let mut timeouts: Vec<u16> = Vec::new();
+        for (offset, timer) in self.timers.send_timers.iter().enumerate() {
             if timer.elapsed().as_millis() > self.timers.rto as u128 {
-                self.write(tx, offset);
+                timeouts.push(offset as u16);
             }
         }
-    }
-
-    #[allow(unused_must_use)]
-    fn on_fast_retransmission(&mut self, tx: &mut Box<dyn DataLinkSender + 'static>) {
-        for offset in self.retransmissions.clone().into_iter() {
-            self.retransmissions.remove(&offset);
-            self.write(tx, offset);
-        }
+        timeouts
     }
 
     fn write(&mut self, tx: &mut Box<dyn DataLinkSender + 'static>, offset: u16) -> io::Result<()> {
@@ -337,7 +479,7 @@ impl SendConnection {
                 new_packet.set_payload(&packet);
             }
         );
-        self.timers.send_timers.insert(offset, time::Instant::now());
+        self.timers.send_timers[offset as usize] = time::Instant::now();
         Ok(())
     }
 }
@@ -374,6 +516,7 @@ fn packet_recv_loop(mut tx: Box<dyn DataLinkSender + 'static>, mut rx: Box<dyn D
                         if let Ok(b) = s.get_mut().on_packet(packet.header.offset, packet.header.packet_type, &packet.payload) {
                             send_ack(&mut tx, t.dst, t.src, packet.header.id, packet.header.offset);
                             if b {
+                                eprintln!("file received");
                                 ih.rcv_cv.notify_all() // ファイル受信完了
                             }
                         }
@@ -417,42 +560,6 @@ impl RecvConnection {
     }
 }
 
-pub struct SendStream {
-    tri: Tri,
-    ih: InterfaceSendModeHandle,
-}
-
-impl SendStream {
-    pub fn send(&mut self, filepath: &str, mtu: usize) -> io::Result<()> {
-        let data_fragments = utils::split_file(filepath, mtu)?;
-        let mut cm = self.ih.send_manager.lock().unwrap();
-        let c = cm.connections.get_mut(&self.tri).ok_or_else(|| {
-            io::Error::new(io::ErrorKind::Other, "stream was terminated unexpectedly")
-        })?;
-
-        for (offset, data_fragment) in data_fragments.iter().enumerate() {
-            let packet = packet::EftPacket {
-                header: packet::EftPacketHeader {
-                    packet_type:
-                        if data_fragments.len() - 1 == offset {
-                            packet::EftType::DataEnd as u8
-                        } else {
-                            packet::EftType::Data as u8
-                        },
-                    length: 8,
-                    total_length: data_fragment.len() as u16 + 8,
-                    id: self.tri.fileid,
-                    offset: offset as u16,
-                },
-                payload: data_fragment.to_vec(),
-            };
-            c.buffer.push(packet);
-            c.retransmissions.insert(offset as u16);
-        }
-        Ok(())
-    }
-}
-
 pub struct RecvStream {
     tri: Tri,
     ih: InterfaceRecvModeHandle,
@@ -460,18 +567,27 @@ pub struct RecvStream {
 
 impl RecvStream {
     pub fn read(&mut self) -> io::Result<Vec<u8>> {
-        let mut cm = self.ih.recv_manager.lock().unwrap();
-        cm = self.ih.rcv_cv.wait(cm).unwrap();
-        let c = cm.connections.get_mut(&self.tri).ok_or_else(|| {
-            io::Error::new(io::ErrorKind::Other, "stream was terminated unexpectedly")
-        })?;
-        let raw_file: Vec<u8> = c.buffer[0..c.cnt].iter().fold(Vec::new(),
-            |mut acc, f| {
-                acc.extend_from_slice(f);
-                acc
+        loop {
+            let mut cm = self.ih.recv_manager.lock().unwrap();
+            cm = self.ih.rcv_cv.wait(cm).unwrap();
+            let c = cm.connections.get_mut(&self.tri).ok_or_else(|| {
+                io::Error::new(io::ErrorKind::Other, "stream was terminated unexpectedly")
+            })?;
+            if let Ok(l) = c.flag4buffer.get_length() {
+                if l != c.cnt {
+                    continue;
+                }
+            } else {
+                continue;
             }
-        );
-        cm.connections.remove(&self.tri);
-        Ok(raw_file)
+            let raw_file: Vec<u8> = c.buffer[0..c.cnt].iter().fold(Vec::new(),
+                |mut acc, f| {
+                    acc.extend_from_slice(f);
+                    acc
+                }
+            );
+            // cm.connections.remove(&self.tri);
+            return Ok(raw_file);
+        }
     }
 }

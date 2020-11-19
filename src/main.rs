@@ -24,13 +24,20 @@ fn main() {
     let role: &str = &args[3];
     match role {
         "sender" => {
-            let mut interface = eft::Interface::bind_sendmode(&args[2]).unwrap();
             // serial
+            // let interface = eft::Interface::bind_sendmode(&args[2]).unwrap();
+            // for id in 0..1000 {
+            //     let filepath: String = format!("./data/data{}", id);
+            //     interface.send(id, MacAddr::new(0xff, 0xff, 0xff, 0xff, 0xff, 0xff), filepath, args[1].parse::<usize>().unwrap()).unwrap();
+            // }
+            let mut interface = eft::Interface::bind_sendmode(&args[2]).unwrap();
+            let mut fileids: Vec<u16> = Vec::new();
+            let mut filepaths: Vec<String> = Vec::new();
             for id in 0..1000 {
-                let filepath: String = format!("./data/data{}", id);
-                let mut stream = interface.stream(id, MacAddr::new(0xff, 0xff, 0xff, 0xff, 0xff, 0xff)).unwrap();
-                stream.send(&filepath, args[1].parse::<usize>().unwrap());
+                fileids.push(id);
+                filepaths.push(format!("./data/data{}", id));
             }
+            interface.send_files(fileids, MacAddr::new(0xff, 0xff, 0xff, 0xff, 0xff, 0xff), filepaths, args[1].parse::<usize>().unwrap()).unwrap();
         },
         "receiver" => {
             let interface = eft::Interface::bind_recvmode(&args[2]).unwrap();

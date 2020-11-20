@@ -342,9 +342,9 @@ fn packet_send_loop(mut tx: Box<dyn DataLinkSender + 'static>, ih: InterfaceSend
                     //     for offset in offsets {
                     //         fast_retransmissions
                     //             .entry(EndPoint { src: m.tri.src, dst: m.tri.dst, })
-                    //             .or_insert(BTreeMap::new());
+                    //             .or_insert(BTreeMap::new())
                     //             .entry(m.tri.fileid)
-                    //             .or_insert(BTreeMap::new());
+                    //             .or_insert(BTreeMap::new())
                     //             .insert(offset, true);
                     //     }
                     // }
@@ -357,9 +357,9 @@ fn packet_send_loop(mut tx: Box<dyn DataLinkSender + 'static>, ih: InterfaceSend
             for offset in connection.timeouts() {
                 timeout_retransmissions
                     .entry(EndPoint { src: connection.tri.src, dst: connection.tri.dst, })
-                    .or_insert(BTreeMap::new());
+                    .or_insert(BTreeMap::new())
                     .entry(connection.tri.fileid)
-                    .or_insert(BTreeMap::new());
+                    .or_insert(BTreeMap::new())
                     .insert(offset, true);
             }
         }

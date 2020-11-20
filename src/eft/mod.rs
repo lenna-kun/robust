@@ -126,7 +126,7 @@ impl InterfaceSendMode {
                 tri: tri,
                 buffer: buffer,
                 flag4buffer: utils::Flags::new(),
-                timers: Timers { send_timers: send_timers, rto: 20, },
+                timers: Timers { send_timers: send_timers, rto: 5, },
                 cnt: 0,
             }
         );

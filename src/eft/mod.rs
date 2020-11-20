@@ -370,6 +370,7 @@ fn packet_send_loop(mut tx: Box<dyn DataLinkSender + 'static>, ih: InterfaceSend
             }
         }
         // それぞれのインターフェースにおける先頭パケットを送信
+        let mut cnt = 0;
         for fast_retransmission in fast_retransmissions.iter_mut() {
             'outer1: for (fileid, next) in fast_retransmission.1.iter_mut() {
                 for (offset, b) in next.iter_mut() {
@@ -378,12 +379,16 @@ fn packet_send_loop(mut tx: Box<dyn DataLinkSender + 'static>, ih: InterfaceSend
                         if let Some(c) = cm.connections.get_mut(&tri) {
                             c.write(&mut tx, *offset);
                             *b = false;
-                            break 'outer1;
+                            cnt += 1;
+                            if cnt > 300 {
+                                break 'outer1;
+                            }
                         }
                     }
                 }
             }
         }
+        let mut cnt = 0;
         for timeout_retransmission in timeout_retransmissions.iter_mut() {
             'outer2: for (fileid, next) in timeout_retransmission.1.iter_mut() {
                 for (offset, b) in next.iter_mut() {
@@ -392,7 +397,10 @@ fn packet_send_loop(mut tx: Box<dyn DataLinkSender + 'static>, ih: InterfaceSend
                         if let Some(c) = cm.connections.get_mut(&tri) {
                             c.write(&mut tx, *offset);
                             *b = false;
-                            break 'outer2;
+                            cnt += 1;
+                            if cnt > 300 {
+                                break 'outer2;
+                            }
                         }
                     }
                 }
@@ -472,6 +480,7 @@ impl SendConnection {
 
 #[allow(unused_must_use)]
 fn packet_recv_loop(mut tx: Box<dyn DataLinkSender + 'static>, mut rx: Box<dyn DataLinkReceiver + 'static>, ih: InterfaceRecvModeHandle) -> io::Result<()> {
+    let mut cnt = 0;
     loop {
         match rx.next() {
             Ok(frame) => {
@@ -502,7 +511,8 @@ fn packet_recv_loop(mut tx: Box<dyn DataLinkSender + 'static>, mut rx: Box<dyn D
                         if let Ok(b) = s.get_mut().on_packet(packet.header.offset, packet.header.packet_type, &packet.payload) {
                             send_ack(&mut tx, t.dst, t.src, packet.header.id, packet.header.offset);
                             if b {
-                                eprintln!("file received");
+                                cnt += 1;
+                                eprint!("file received: {}\r", cnt);
                                 ih.rcv_cv.notify_all() // ファイル受信完了
                             }
                         }

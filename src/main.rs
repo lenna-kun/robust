@@ -46,7 +46,7 @@ fn main() {
             for id in 0..1000 {
                 let mut interface = interface.clone();
                 threads.push(thread::spawn(move || {
-                    let filepath: String = format!("./received/data{}", id);
+                    let filepath: String = format!("./data/data{}", id);
                     let mut stream = interface.stream(id, MacAddr::new(0xff, 0xff, 0xff, 0xff, 0xff, 0xff)).unwrap();
                     let data = if let Ok(d) = stream.read() {
                         d

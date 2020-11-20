@@ -340,13 +340,12 @@ fn packet_send_loop(mut tx: Box<dyn DataLinkSender + 'static>, ih: InterfaceSend
                     }
                     // if let Some(offsets) = fr {
                     //     for offset in offsets {
-                    //         let e = fast_retransmissions
+                    //         fast_retransmissions
                     //             .entry(EndPoint { src: m.tri.src, dst: m.tri.dst, })
                     //             .or_insert(BTreeMap::new());
-                    //         let e = e
                     //             .entry(m.tri.fileid)
                     //             .or_insert(BTreeMap::new());
-                    //         e.insert(offset, true);
+                    //             .insert(offset, true);
                     //     }
                     // }
                 }
@@ -356,13 +355,12 @@ fn packet_send_loop(mut tx: Box<dyn DataLinkSender + 'static>, ih: InterfaceSend
         }
         for connection in cm.connections.values_mut() { // get timeout packets
             for offset in connection.timeouts() {
-                let e = timeout_retransmissions
+                timeout_retransmissions
                     .entry(EndPoint { src: connection.tri.src, dst: connection.tri.dst, })
                     .or_insert(BTreeMap::new());
-                let e = e
                     .entry(connection.tri.fileid)
                     .or_insert(BTreeMap::new());
-                e.insert(offset, true);
+                    .insert(offset, true);
             }
         }
         
